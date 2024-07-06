@@ -20,6 +20,9 @@ class EnflationEstimateYearly:
         if enflation_estimator_list:
             self.value_loss_rate_list = enflation_estimator_list
         self.value_loss_rate_list = [1/i**(1/12) for i in self.value_loss_rate_list]
-    def get_value_loss(month):
+    def __getitem__(self, month):
         index = month//12
-        return value_loss_rate_list[index]
+        try:
+            return self.value_loss_rate_list[index]
+        except:
+            raise Exception(f'there are only {len(value_loss_rate_list)*12} months of value. You asked for month {month}')

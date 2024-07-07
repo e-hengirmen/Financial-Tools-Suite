@@ -1,5 +1,5 @@
-from .enflation_estimator.py import EnflationEstimateYearly
-from .rent_estimator.py import RentEstimatorInitialFlat
+from enflation_estimator import EnflationEstimateYearly
+from rent_estimator import RentEstimatorInitialFlat
 
 M=3000000  # initil credit
 n=120      # months

@@ -18,6 +18,6 @@ python3 main.py
 ```
 
 ## important note:
-The default estimations for yearly enflation are quite high first year being %60. This is because in turkey this is the current enflation rate. Thats why if u live somewhere else Deinitely set enflation estimator lists in variables to your own rates:  
-[1.6, 1.4, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1]
+The default estimations for yearly enflation are quite high first year being %60. This is because in turkey this is the current enflation rate. Thats why if u live somewhere else Deinitely set enflation estimator lists in variables to your own rates. This is the default estimation list. Change it in variables and make sure it has number_of_months/12 amount of enflation estimations to make sure it works:  
+[1.6, 1.4, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1]
 

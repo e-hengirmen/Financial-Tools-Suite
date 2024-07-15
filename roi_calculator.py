@@ -1,6 +1,11 @@
 from enflation_estimator import EnflationEstimateYearly
 from rent_estimator import RentEstimatorInitialFlat
 
+"""
+0 = (((((...M*r-monthly_pay)*r-monthly_pay......
+M*r^n = monthly_pay*(r^(n-1)+r^(n-2)+.....1)
+monthly_pay = M*r^n*(r-1)/(r^n-1)
+"""
 
 class ROICalculator:
   
@@ -25,3 +30,23 @@ class ROICalculator:
             total_rent = self.rent_estimator.get_total_rent()
             total_rent_value = self.rent_estimator.get_total_rent_value()
         return self.monthly_payment, total_payment, total_payment_value, self.M/total_payment_value, (self.M+total_rent_value)/total_payment_value, total_rent, total_rent_value
+
+    def calculate_roi_colored(self):
+        (
+            monthly_payment,
+            total_payment,
+            total_payment_value,
+            ROI,
+            ROI_with_rent,
+            total_rent,
+            total_rent_value,
+        ) = self.calculate_roi()
+        return (
+            monthly_payment,
+            total_payment,
+            total_payment_value,
+            '\033[1m' + ("\033[32m" if ROI > 1 else "\033[31m") + str(ROI) + "\033[0m",
+            '\033[1m' + ("\033[32m" if ROI_with_rent > 1 else "\033[31m") + str(ROI_with_rent) + "\033[0m",
+            total_rent,
+            total_rent_value,
+        )

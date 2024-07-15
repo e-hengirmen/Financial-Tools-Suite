@@ -99,7 +99,7 @@ if operation in ('VALUATION_CALCULATOR', 'BOTH_CALCULATORS'):
             color = RED
         print(f'{index}. with total payment of'
               f' {colorize(total_payment, color)} with {payment_time}'
-              f' of payments costs: {colorize(total_paid_value, color)}(enflation adjusted)')
+              f' months of payments it costs: {colorize(total_paid_value, color)}(enflation adjusted)')
         if index == 1:
             if len(payment_list) > 1:
                 print(f'\t PAYING {colorize(payment_list[1][0] - best_val, GREEN)} less then next best option')

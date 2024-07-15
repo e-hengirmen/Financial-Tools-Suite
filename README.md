@@ -1,7 +1,7 @@
 # ROI-calculator
 This is my own return on investment calculator. It is quite basic and for my own use. Just putting it here so that I dont recode it every time.
 
-Since Some of my friends asked me to add a main.py I have added. It I am sharing how to use it below:
+Since Some of my friends asked me to add a main.py I have added it. I am sharing how to use it below:
 
 # How to use
 1. Go into main.py
@@ -11,7 +11,7 @@ Since Some of my friends asked me to add a main.py I have added. It I am sharing
    2. VALUATION_CALCULATOR
    3. BOTH_CALCULATORS 
 4. Change the variables for your operation
-5. Don't forget to change enflation estimator list to your estimations esspecially if you are not leaving in a high enflation country. 
+5. Don't forget to change enflation estimator list to your estimations esspecially if you are not living in a high enflation country. 
 6. run main.py
 ```
 python3 main.py

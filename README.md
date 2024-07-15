@@ -8,7 +8,7 @@ Since Some of my friends asked me to add a main.py I have added it. I am sharing
 2. Go to variables section
 3. Choose the operaiton you want
    1. ROI_CALCULATOR (Used for calculating the gained profit from buying a home) 
-   2. VALUATION_CALCULATOR (used for 
+   2. VALUATION_CALCULATOR (used for finding best payment option)
    3. BOTH_CALCULATORS 
 4. Change the variables for your operation
 5. Don't forget to change enflation estimator list to your estimations esspecially if you are not living in a high enflation country. 

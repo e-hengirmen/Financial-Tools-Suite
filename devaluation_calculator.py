@@ -47,4 +47,16 @@ class Devaluation_Calculator:
         value_diff = '\033[1m' + ("\033[32m" if rate>0 else "\033[31m") + str(value_diff) + "\033[0m"
         print(f'it is {state} valueable to buy in installments by {value_diff} in current value')
 
+    def order_payment_options(self, payment_options):
+        payment_list = []
+        for total_payment, payment_time in payment_options:
+            monthly_payment = total_payment / payment_time
+            total_paid_value = self.calculate_valuation(monthly_payment ,payment_time)
+            payment_list.append((
+                total_paid_value,
+                total_payment,
+                payment_time,
+            ))
+        payment_list = sorted(payment_list)
+        return payment_list
 

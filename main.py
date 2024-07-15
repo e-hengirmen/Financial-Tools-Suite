@@ -38,13 +38,23 @@ sell_after = 5 # as years. Dont make it more than credit time in yrstd(because o
 enflation_estimates_roi = [1.6, 1.4, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1]  # 15 years of estimated enflations to make it easier if 180 months is chosen
 
 ######### Valuation_calculator variables
-onetime_payment = 10000
-credit_payment  = 14200  # enter total credit payment here
-credit_payment_time = 18
+payment_options = [ # print total payment and number of months here
+    (10000, 1),
+    (12700, 6),
+    (13300, 9),
+]
 # this will set yearly enflations to 1.6, 1.4, 1.1, 1.1, 1.1 ... . If you wanna set your own estimated enflation rates change the list to a list of yearly enflation rates.
 enflation_estimates_val = [1.6, 1.4]  # 2 years of data added since 18 months is less than 2 years
 #######################################################################
 
+
+RED = '\033[31m'
+GREEN = '\033[32m'
+BOLD = '\033[1m'
+RESET ='\033[0m'
+
+def colorize(s, color):
+    return BOLD + color + (f'{s:.2f}' if type(s) is float else str(s)) + RESET
 
 
 if operation in ('ROI_CALCULATOR', 'BOTH_CALCULATORS'):
@@ -80,5 +90,18 @@ if operation == 'BOTH_CALCULATORS':
 if operation in ('VALUATION_CALCULATOR', 'BOTH_CALCULATORS'):
     enflation_estimator = EnflationEstimateYearly(enflation_estimates_val)
     devalutaion_calculator = Devaluation_Calculator(enflation_estimator=enflation_estimator)
-
-    devalutaion_calculator.onetime_vs_credit(onetime_payment, credit_payment , credit_payment_time)
+    payment_list = devalutaion_calculator.order_payment_options(payment_options)
+    best_val = payment_list[0][0]
+    for index, (total_paid_value, total_payment, payment_time) in enumerate(payment_list, 1):
+        if index == 1:
+            color = GREEN
+        else:
+            color = RED
+        print(f'{index}. with total payment of'
+              f' {colorize(total_payment, color)} with {payment_time}'
+              f' of payments costs: {colorize(total_paid_value, color)}(enflation adjusted)')
+        if index == 1:
+            if len(payment_list) > 1:
+                print(f'\t PAYING {colorize(payment_list[1][0] - best_val, GREEN)} less then next best option')
+        else:
+            print(f'\t PAYING {colorize(total_paid_value - best_val, RED)} more')

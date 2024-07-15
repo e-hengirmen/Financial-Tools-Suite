@@ -35,14 +35,14 @@ n=120      # months
 r=1.0069   # interest rate
 rent = 25000   # Set 0 if you want to calculte without rent
 sell_after = 5 # as years. Dont make it more than credit time in yrstd(because of missing enflation data)
-enflation_estimates_roi = []
+enflation_estimates_roi = [1.6, 1.4, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1]  # 15 years of estimated enflations to make it easier if 180 months is chosen
 
 ######### Valuation_calculator variables
 onetime_payment = 10000
 credit_payment  = 14200  # enter total credit payment here
 credit_payment_time = 18
 # this will set yearly enflations to 1.6, 1.4, 1.1, 1.1, 1.1 ... . If you wanna set your own estimated enflation rates change the list to a list of yearly enflation rates.
-enflation_estimates_val = []
+enflation_estimates_val = [1.6, 1.4]  # 2 years of data added since 18 months is less than 2 years
 #######################################################################
 
 

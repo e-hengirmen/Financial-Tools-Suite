@@ -17,7 +17,7 @@ from roi_calculator import ROICalculator
 from devaluation_calculator import Devaluation_Calculator
 from rent_estimator import RentEstimatorInitialFlat
 from enflation_estimator import EnflationEstimateFlat, EnflationEstimateYearly
-
+from index_trend_visualiser import IndexTrendVisualiser
 
 
 
@@ -26,25 +26,32 @@ from enflation_estimator import EnflationEstimateFlat, EnflationEstimateYearly
 # operation types are:
 # * ROI_CALCULATOR
 # * VALUATION_CALCULATOR
-# * BOTH_CALCULATORS
-operation = "BOTH_CALCULATORS"
+# * INDEX_VISUALISER
+# * ALL_CALCULATORS
+operation = "INDEX_VISUALISER"
 
 ######### ROI_calculator variables
 M=3000000  # initil credit
-n=120      # months
+n=180      # months
 r=1.0069   # interest rate
-rent = 25000   # Set 0 if you want to calculte without rent
+rent = 20000   # Set 0 if you want to calculte without rent
 sell_after = 5 # as years. Dont make it more than credit time in yrstd(because of missing enflation data)
-enflation_estimates_roi = [1.6, 1.4, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1]  # 15 years of estimated enflations to make it easier if 180 months is chosen
+enflation_estimates_roi = [1.6, 1.5, 1.4, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1]  # 15 years of estimated enflations to make it easier if 180 months is chosen
 
 ######### Valuation_calculator variables
 payment_options = [ # print total payment and number of months here
-    (10000, 1),
-    (12700, 6),
-    (13300, 9),
+    (25000*24, 24),
+    (22000*24, 24),
+    (22000, 12),
 ]
 # this will set yearly enflations to 1.6, 1.4, 1.1, 1.1, 1.1 ... . If you wanna set your own estimated enflation rates change the list to a list of yearly enflation rates.
-enflation_estimates_val = [1.6, 1.4]  # 2 years of data added since 18 months is less than 2 years
+enflation_estimates_val = [1.75, 1.4]  # 2 years of data added since 18 months is less than 2 years
+
+######### Index Visualiser variables
+current_day = 15
+drop_percent = 5.5
+period = 2
+match_day = 0
 #######################################################################
 
 
@@ -57,7 +64,7 @@ def colorize(s, color):
     return BOLD + color + (f'{s:.2f}' if type(s) is float else str(s)) + RESET
 
 
-if operation in ('ROI_CALCULATOR', 'BOTH_CALCULATORS'):
+if operation in ('ROI_CALCULATOR', 'ALL_CALCULATORS'):
     enflation_estimator = EnflationEstimateYearly(enflation_estimation_list=enflation_estimates_roi)
     rent_estimator = RentEstimatorInitialFlat(rent, n, sell_after, enflation_estimator)
     roi_calculator = ROICalculator(M,n,r,enflation_estimator, rent_estimator)
@@ -81,13 +88,13 @@ if operation in ('ROI_CALCULATOR', 'BOTH_CALCULATORS'):
     print(f"total_rent_value\t", total_rent_value)
 
 
-if operation == 'BOTH_CALCULATORS':
+if operation == 'ALL_CALCULATORS':
     print()
     print('#########################################################')
     print()
 
 
-if operation in ('VALUATION_CALCULATOR', 'BOTH_CALCULATORS'):
+if operation in ('VALUATION_CALCULATOR', 'ALL_CALCULATORS'):
     enflation_estimator = EnflationEstimateYearly(enflation_estimates_val)
     devalutaion_calculator = Devaluation_Calculator(enflation_estimator=enflation_estimator)
     payment_list = devalutaion_calculator.order_payment_options(payment_options)
@@ -105,3 +112,11 @@ if operation in ('VALUATION_CALCULATOR', 'BOTH_CALCULATORS'):
                 print(f'\t PAYING {colorize(payment_list[1][0] - best_val, GREEN)} less then next best option')
         else:
             print(f'\t PAYING {colorize(total_paid_value - best_val, RED)} more')
+
+
+if operation in ('INDEX_VISUALISER', 'ALL_CALCULATORS'):
+visualiser = IndexTrendVisualiser()
+visualiser.process_data(current_day=current_day, drop_percent=drop_percent, period=period)
+visualiser.create_graph(match_day=match_day)
+# visualiser.create_graph(match_day=14-1)
+

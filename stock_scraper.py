@@ -129,7 +129,7 @@ class StockScraper:
         for day in range(1,32):
             if day in result:
                 val, count = result[day]
-                print(f'Day {day} res: {val/count}')
+                print(f"\033[{91 if val/count < 0.0015 else 92 if val/count > 0.05 else 0}mDay {day} res: {val/count}")
 
         self.plot_graph(data_lists, titles)
 
@@ -197,11 +197,14 @@ fund_list = general_fund_list
 stockscraper.create_tables(fund_list)
 
 
-stockscraper.plot_within_dates(fund_list, '2023-06-01', '2024-1-18', drop_late_starts=True)
-x = stockscraper.get_data_within('DVT', '2024-01-01', '2024-06-01')
+# stockscraper.plot_within_dates(fund_list, '2023-06-01', '2024-1-18', drop_late_starts=True)
+# x = stockscraper.get_data_within('DVT', '2024-01-01', '2024-06-01')
 
 
 
 
-stockscraper.plot_monthly('YZG', '2024-01-01', '2024-06-1')
+stockscraper.plot_monthly('YZG', '2022-01-01', '2023-01-1')
+stockscraper.plot_monthly('YZG', '2023-01-01', '2024-01-1')
+stockscraper.plot_monthly('YZG', '2024-01-01', '2024-8-18')
 
+stockscraper.plot_monthly('YZG', '2023-01-01', '2024-8-18')

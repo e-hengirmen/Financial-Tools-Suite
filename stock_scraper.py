@@ -2,6 +2,7 @@ import cloudscraper
 from datetime import datetime
 import matplotlib.pyplot as plt
 from dateutil.relativedelta import relativedelta
+from copy import deepcopy
 
 class StockScraper:
     def __init__(self):
@@ -41,7 +42,7 @@ class StockScraper:
         res = []
         for row in self.data_center[abbr]:
             if start_date <= row['date'] < end_date:
-                res.append(row)
+                res.append(deepcopy(row))
         initial_value = res[0]['value']
         for row in res:
             row['percentage'] = (row['value'] - initial_value) / initial_value
@@ -71,7 +72,7 @@ class StockScraper:
         min_date = datetime.now().date()
         for abbr in abbr_list:
             try:
-                data = finscraper.get_data_within(abbr, start_date, end_date)
+                data = self.get_data_within(abbr, start_date, end_date)
                 if drop_late_starts and min_date > data[0]['date']:
                     min_date = data[0]['date']
                 data_lists.append(data)
@@ -113,12 +114,24 @@ class StockScraper:
             next_date = current_date + relativedelta(months=1)
             data = self.get_data_within(abbr, current_date, next_date)
             self.year_zero(data)
-            print(data)
             data_lists.append(data)
             titles.append(str(current_date))
             current_date = next_date
-        self.plot_graph(data_lists, titles)
+        
 
+        result = {}
+        for data_list, time in zip(data_lists, titles):
+            for row in data_list:
+                day = row['date'].day
+                percentage = row['percentage']
+                old_val, count = result.get(day, (0, 0))
+                result[day] = (old_val + percentage, count + 1)
+        for day in range(1,32):
+            if day in result:
+                val, count = result[day]
+                print(f'Day {day} res: {val/count}')
+
+        self.plot_graph(data_lists, titles)
 
 
 
@@ -190,6 +203,5 @@ x = stockscraper.get_data_within('DVT', '2024-01-01', '2024-06-01')
 
 
 
-stockscraper.plot_monthly('DVT', '2023-01-01', '2024-06-01')
-
+stockscraper.plot_monthly('YZG', '2024-01-01', '2024-06-1')
 

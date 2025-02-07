@@ -28,7 +28,7 @@ from index_trend_visualiser import IndexTrendVisualiser
 # * VALUATION_CALCULATOR
 # * INDEX_VISUALISER
 # * ALL_CALCULATORS
-operation = "INDEX_VISUALISER"
+operation = "VALUATION_CALCULATOR"
 
 ######### ROI_calculator variables
 M=3000000  # initil credit
@@ -40,12 +40,12 @@ enflation_estimates_roi = [1.6, 1.5, 1.4, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1, 1.1
 
 ######### Valuation_calculator variables
 payment_options = [ # print total payment and number of months here
-    (25000*24, 24),
-    (22000*24, 24),
-    (22000, 12),
+    (1800, 1),
+    (3000, 12),
+    (3600, 12),
 ]
 # this will set yearly enflations to 1.6, 1.4, 1.1, 1.1, 1.1 ... . If you wanna set your own estimated enflation rates change the list to a list of yearly enflation rates.
-enflation_estimates_val = [1.75, 1.4]  # 2 years of data added since 18 months is less than 2 years
+enflation_estimates_val = [1.41, 1.4]  # 2 years of data added since 18 months is less than 2 years
 
 ######### Index Visualiser variables
 current_day = 15
@@ -115,8 +115,8 @@ if operation in ('VALUATION_CALCULATOR', 'ALL_CALCULATORS'):
 
 
 if operation in ('INDEX_VISUALISER', 'ALL_CALCULATORS'):
-visualiser = IndexTrendVisualiser()
-visualiser.process_data(current_day=current_day, drop_percent=drop_percent, period=period)
-visualiser.create_graph(match_day=match_day)
+    visualiser = IndexTrendVisualiser()
+    visualiser.process_data(current_day=current_day, drop_percent=drop_percent, period=period)
+    visualiser.create_graph(match_day=match_day)
 # visualiser.create_graph(match_day=14-1)
 

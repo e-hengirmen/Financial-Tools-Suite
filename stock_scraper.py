@@ -41,7 +41,7 @@ class StockScraper:
             end_date = self.get_date(end_date)
         res = []
         for row in self.data_center[abbr]:
-            if start_date <= row['date'] < end_date:
+            if start_date <= row['date'] <= end_date:
                 res.append(deepcopy(row))
         initial_value = res[0]['value']
         for row in res:
@@ -91,7 +91,7 @@ class StockScraper:
                     titles.append(abbr)
                 else:
                     print(f'{abbr} dropped starting at {current_date} after min date of {min_date}')
-        self.plot_graph(data_lists, titles)
+        self.plot_graph(data_lists, titles, plot_title=f'{str(start_date)} <-> {str(end_date)}')
     
     def year_zero(self, data):
         time_diff = data[0]['date'] - datetime(2000,1,1).date()
@@ -138,13 +138,17 @@ class StockScraper:
 
 stockscraper = StockScraper()
 general_fund_list = [
+    'AES',
+    'IHK',
+    'TTE',
+    'ADP',
+    'TAU',
+    'AFT',
     'DVT',
     'IJC',
-    'ICZ',
+    'BIO',
     'IJZ',
-    'IHK',
-    'YZG',
-    'MJG',
+    'AFA',
 ]
 
 money_market_fund_list = [  # para piyasası fonları
@@ -194,17 +198,40 @@ silver_fund_list = [
 ]
 
 fund_list = general_fund_list
+
+fund_list = [
+'IHK',
+'TTE',
+'ADP',
+'AFA',
+]
 stockscraper.create_tables(fund_list)
 
 
-# stockscraper.plot_within_dates(fund_list, '2023-06-01', '2024-1-18', drop_late_starts=True)
+
+
+today_datetime = datetime.today()
+today  = datetime.today().strftime('%Y-%m-%d')
+month_0 = today_datetime.replace(day=1).strftime('%Y-%m-%d')
+month_1 = (today_datetime - relativedelta(months=1)).replace(day=1).strftime('%Y-%m-%d')
+month_2 = (today_datetime - relativedelta(months=2)).replace(day=1).strftime('%Y-%m-%d')
+month_4 = (today_datetime - relativedelta(months=4)).replace(day=1).strftime('%Y-%m-%d')
+month_6 = (today_datetime - relativedelta(months=6)).replace(day=1).strftime('%Y-%m-%d')
+month_12 = (today_datetime - relativedelta(months=12)).replace(day=1).strftime('%Y-%m-%d')
+
+stockscraper.plot_within_dates(fund_list, month_12, today, drop_late_starts=True)
+stockscraper.plot_within_dates(fund_list, month_6, today, drop_late_starts=True)
+stockscraper.plot_within_dates(fund_list, month_4, today, drop_late_starts=True)
+stockscraper.plot_within_dates(fund_list, month_2, today, drop_late_starts=True)
+stockscraper.plot_within_dates(fund_list, month_1, today, drop_late_starts=True)
+stockscraper.plot_within_dates(fund_list, month_0, today, drop_late_starts=True)
 # x = stockscraper.get_data_within('DVT', '2024-01-01', '2024-06-01')
 
 
 
 
-stockscraper.plot_monthly('YZG', '2022-01-01', '2023-01-1')
-stockscraper.plot_monthly('YZG', '2023-01-01', '2024-01-1')
-stockscraper.plot_monthly('YZG', '2024-01-01', '2024-8-18')
+# stockscraper.plot_monthly('YZG', '2022-01-01', '2023-01-1')
+# stockscraper.plot_monthly('YZG', '2023-01-01', '2024-01-1')
+# stockscraper.plot_monthly('YZG', '2024-01-01', '2024-8-18')
 
-stockscraper.plot_monthly('YZG', '2023-01-01', '2024-8-18')
+# stockscraper.plot_monthly('YZG', '2023-01-01', '2024-8-18')

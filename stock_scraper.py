@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 from dateutil.relativedelta import relativedelta
 from copy import deepcopy
 
+import numpy as np
+import pandas as pd
+
 class StockScraper:
     def __init__(self):
         self.scraper = cloudscraper.create_scraper()
@@ -34,7 +37,7 @@ class StockScraper:
             if abbr not in self.data_center:
                 self.data_center[abbr] = self.get_data(abbr)
 
-    def get_data_within(self, abbr, start_date, end_date):
+    def get_data_within(self, abbr, start_date, end_date, daily=False):
         if type(start_date) is str:
             start_date = self.get_date(start_date)
         if type(end_date) is str:
@@ -44,8 +47,15 @@ class StockScraper:
             if start_date <= row['date'] <= end_date:
                 res.append(deepcopy(row))
         initial_value = res[0]['value']
-        for row in res:
-            row['percentage'] = (row['value'] - initial_value) / initial_value
+        if daily:
+            for i in range(1, len(res)):
+                prev = res[i-1]['value']
+                curr = res[i]['value']
+                res[i]['percentage'] = (curr - prev) / prev
+            res[0]['percentage'] = 0
+        else:
+            for row in res:
+                row['percentage'] = (row['value'] - initial_value) / initial_value
 
         return res
     
@@ -133,6 +143,78 @@ class StockScraper:
 
         self.plot_graph(data_lists, titles)
 
+    def calculate_correlation(
+        self,
+        abbr1,
+        abbr2,
+        start_date = (datetime.today() - relativedelta(months=12)).date(),
+        end_date = datetime.now().date(),
+        method = 'pearson'
+    ):
+        """
+        Calculate correlation between two funds.
+
+        :param abbr1: First fund abbreviation
+        :param abbr2: Second fund abbreviation
+        :param start_date: optional start date (YYYY-MM-DD or datetime.date)
+        :param end_date: optional end date (YYYY-MM-DD or datetime.date)
+        :param method: correlation method ('pearson' or 'spearman')
+        :return: correlation value
+        """
+        # Get data
+        data1 = pd.DataFrame(self.get_data_within(abbr1, start_date, end_date, daily=True))
+        data2 = pd.DataFrame(self.get_data_within(abbr2, start_date, end_date, daily=True))
+
+        # Align by date
+        merged = pd.merge(data1[['date', 'percentage']], data2[['date', 'percentage']], 
+                          on='date', suffixes=(f'_{abbr1}', f'_{abbr2}'))
+
+        # Calculate correlation
+        corr = merged[f'percentage_{abbr1}'].corr(merged[f'percentage_{abbr2}'], method=method)
+
+        return corr
+    
+    def get_all_correlations(
+            self,
+            abbr_list=None,
+            start_date = (datetime.today() - relativedelta(months=12)).date(),
+            end_date = datetime.now().date(),
+            method = 'pearson'
+        ):
+        if abbr_list is None:
+            abbr_list = list(self.data_center.keys())
+
+        n = len(abbr_list)
+        correlations = []
+
+        # Collect all correlations
+        for i in range(n):
+            for j in range(i + 1, n):
+                a = abbr_list[i]
+                b = abbr_list[j]
+                corr = self.calculate_correlation(a, b, start_date, end_date, method)
+                correlations.append((a, b, corr))
+
+        # Sort descending by correlation
+        correlations.sort(key=lambda x: x[2], reverse=True)
+
+        # Print with color coding
+        print('Correlations:')
+        print('########################################')
+        for a, b, corr in correlations:
+            if corr >= 0.98:
+                color = "\033[91m"  # red
+            elif corr >= 0.95:
+                color = "\033[33m"  # orange
+            elif corr >= 0.85:
+                color = "\033[93m"  # yellow
+            elif corr >= 0.70:
+                color = "\033[92m"  # green
+            else:
+                color = "\033[0m"   # default
+            print(f"{color}{a} - {b}: {corr:.4f}\033[0m")
+        print('########################################')
+
 
 
 
@@ -201,9 +283,14 @@ fund_list = general_fund_list
 
 fund_list = [
 'IHK',
+'BIO',
+'YZG',
 'TTE',
 'ADP',
-'AFA',
+'TAU',
+'DVT',
+'AFT',
+'YAY',
 ]
 stockscraper.create_tables(fund_list)
 
@@ -227,6 +314,7 @@ stockscraper.plot_within_dates(fund_list, month_1, today, drop_late_starts=True)
 stockscraper.plot_within_dates(fund_list, month_0, today, drop_late_starts=True)
 # x = stockscraper.get_data_within('DVT', '2024-01-01', '2024-06-01')
 
+stockscraper.get_all_correlations()
 
 
 

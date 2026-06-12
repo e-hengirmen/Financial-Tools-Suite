@@ -1,0 +1,10 @@
+# Reweighting Ruleset
+Reweight only when both of these apply (AND conditions)
+- pb_x > pb_y * 2
+    - pe_x > pe_y + 4 (maybe)
+    - pe_x > pe_y + 5 (ok)
+## Stopping condition
+Dont reweight x if (OR conditions)
+- pb_x <= 0.9
+- pb_x <= 2 AND pe_x <=3.5
+

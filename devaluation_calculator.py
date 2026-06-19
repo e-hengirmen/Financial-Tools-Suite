@@ -52,6 +52,7 @@ class Devaluation_Calculator:
         for total_payment, payment_time in payment_options:
             monthly_payment = total_payment / payment_time
             total_paid_value = self.calculate_valuation(monthly_payment ,payment_time)
+            print(total_paid_value)
             payment_list.append((
                 total_paid_value,
                 total_payment,

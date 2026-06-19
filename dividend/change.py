@@ -16,10 +16,17 @@ with open(INPUT_FILE, "r", encoding="utf-8") as f:
 
 sonuclar = []
 
-# Ortalama hesaplamak için sayısal değişimleri biriktireceğimiz listeler
-c1_list, c2_list, c3_list, c4_list, c5_list = [], [], [], [], []
+c_minus3_list = []
+c_minus2_list = []
+c_minus1_list = []
+c_t_list = []
+c_plus1_list = []
+c_plus2_list = []
+c_plus3_list = []
 
-print("BIST verileri çekiliyor ve iş günleri analiz ediliyor...\n")
+print(
+    "BIST verileri çekiliyor ve T-4 tabanlı Sol Grup kümülatif mantığına göre analiz ediliyor...\n"
+)
 
 for parca in satirlar:
     if len(parca) < 3:
@@ -30,7 +37,8 @@ for parca in satirlar:
 
     temettu_tarihi = datetime.datetime.strptime(tarih_str, "%Y-%m-%d").date()
 
-    baslangic = (temettu_tarihi - datetime.timedelta(days=10)).strftime(
+    # T-4'ten güvenli veri alabilmek için aralığı sola doğru biraz daha açtık
+    baslangic = (temettu_tarihi - datetime.timedelta(days=15)).strftime(
         "%Y-%m-%d"
     )
     bitis = (temettu_tarihi + datetime.timedelta(days=15)).strftime("%Y-%m-%d")
@@ -54,43 +62,56 @@ for parca in satirlar:
         t_gunu = valid_dates[0]
         t_idx = all_dates.index(t_gunu)
 
-        if t_idx - 1 < 0 or t_idx + 3 >= len(all_dates):
+        # T-4 ve T+3 indekslerinin sınır kontrolü (T-4 mevcut olmalı)
+        if t_idx - 4 < 0 or t_idx + 3 >= len(all_dates):
             continue
 
+        # Fiyat Noktaları
+        p_t_eksi_4 = df.iloc[t_idx - 4]["Close"]  # Sol grubun ana taban fiyatı
+        p_t_eksi_3 = df.iloc[t_idx - 3]["Close"]
+        p_t_eksi_2 = df.iloc[t_idx - 2]["Close"]
         p_t_eksi_1 = df.iloc[t_idx - 1]["Close"]
         p_t = df.iloc[t_idx]["Close"]
         p_t_arti_1 = df.iloc[t_idx + 1]["Close"]
         p_t_arti_2 = df.iloc[t_idx + 2]["Close"]
         p_t_arti_3 = df.iloc[t_idx + 3]["Close"]
 
-        p_t_eksi_2 = (
-            df.iloc[t_idx - 2]["Close"] if t_idx - 2 >= 0 else p_t_eksi_1
-        )
+        # --- YENİ 3 PARÇALI KÜMÜLATİF MANTIK (T-4 TABANLI) ---
 
-        # Yüzdesel değişimler (Sayısal olarak)
-        c1 = ((p_t_eksi_1 - p_t_eksi_2) / p_t_eksi_2) * 100
-        c2 = ((p_t - p_t_eksi_1) / p_t_eksi_1) * 100
-        c3 = ((p_t_arti_1 - p_t_eksi_1) / p_t_eksi_1) * 100
-        c4 = ((p_t_arti_2 - p_t_eksi_1) / p_t_eksi_1) * 100
-        c5 = ((p_t_arti_3 - p_t_eksi_1) / p_t_eksi_1) * 100
+        # 1. SOL GRUP (Taban: T-4 kapanış fiyatı | 24 saatlik döngüler kümülatif birikir)
+        c_minus3 = ((p_t_eksi_3 - p_t_eksi_4) / p_t_eksi_4) * 100
+        c_minus2 = ((p_t_eksi_2 - p_t_eksi_4) / p_t_eksi_4) * 100
+        c_minus1 = ((p_t_eksi_1 - p_t_eksi_4) / p_t_eksi_4) * 100
+
+        # 2. ORTA GRUP (Sadece T günü kendisi | Taban: T-1 kapanış fiyatı)
+        c_t = ((p_t - p_t_eksi_1) / p_t_eksi_1) * 100
+
+        # 3. SAĞ GRUP (T günü dahil kümülatif | Taban: T-1 kapanış fiyatı)
+        c_plus1 = ((p_t_arti_1 - p_t_eksi_1) / p_t_eksi_1) * 100
+        c_plus2 = ((p_t_arti_2 - p_t_eksi_1) / p_t_eksi_1) * 100
+        c_plus3 = ((p_t_arti_3 - p_t_eksi_1) / p_t_eksi_1) * 100
 
         # Ortalamalar için listelere ekle
-        c1_list.append(c1)
-        c2_list.append(c2)
-        c3_list.append(c3)
-        c4_list.append(c4)
-        c5_list.append(c5)
+        c_minus3_list.append(c_minus3)
+        c_minus2_list.append(c_minus2)
+        c_minus1_list.append(c_minus1)
+        c_t_list.append(c_t)
+        c_plus1_list.append(c_plus1)
+        c_plus2_list.append(c_plus2)
+        c_plus3_list.append(c_plus3)
 
         sonuclar.append(
             {
                 "ticker": ticker_raw,
                 "tarih": tarih_str,
                 "verim": verim_str,
-                "c1": f"{c1:+.2f}%",
-                "c2": f"{c2:+.2f}%",
-                "c3": f"{c3:+.2f}%",
-                "c4": f"{c4:+.2f}%",
-                "c5": f"{c5:+.2f}%",
+                "c_m3": f"{c_minus3:+.2f}%",
+                "c_m2": f"{c_minus2:+.2f}%",
+                "c_m1": f"{c_minus1:+.2f}%",
+                "c_t": f"{c_t:+.2f}%",
+                "c_p1": f"{c_plus1:+.2f}%",
+                "c_p2": f"{c_plus2:+.2f}%",
+                "c_p3": f"{c_plus3:+.2f}%",
             }
         )
 
@@ -100,31 +121,29 @@ for parca in satirlar:
 # --- PROCESSED_DATA.TXT DOSYASINA YAZMA ---
 
 with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-    # Başlık Satırı
-    header = f"{'Hisse':<8} {'Temettü Tar':<12} {'Verim':<7} {'1G_Önce':<9} {'T_Günü':<9} {'T+1_Günü':<9} {'T+2_Günü':<9} {'T+3_Günü':<9}\n"
+    header = f"{'Hisse':<8} {'Temettü Tar':<12} {'Verim':<7} {'T-3':<9} {'T-2':<9} {'T-1':<9} {'T_Günü':<9} {'T+1':<9} {'T+2':<9} {'T+3':<9}\n"
     f.write(header)
     f.write("-" * len(header.strip()) + "\n")
 
-    # Veri Satırları
     for s in sonuclar:
         f.write(
-            f"{s['ticker']:<8} {s['tarih']:<12} %{s['verim']:<5} {s['c1']:<9} {s['c2']:<9} {s['c3']:<9} {s['c4']:<9} {s['c5']:<9}\n"
+            f"{s['ticker']:<8} {s['tarih']:<12} %{s['verim']:<5} {s['c_m3']:<9} {s['c_m2']:<9} {s['c_m1']:<9} {s['c_t']:<9} {s['c_p1']:<9} {s['c_p2']:<9} {s['c_p3']:<9}\n"
         )
 
-    # Alt sınır çizgisi ve Ortalamalar (Averages)
     if sonuclar:
         f.write("-" * len(header.strip()) + "\n")
-        avg_c1 = sum(c1_list) / len(c1_list)
-        avg_c2 = sum(c2_list) / len(c2_list)
-        avg_c3 = sum(c3_list) / len(c3_list)
-        avg_c4 = sum(c4_list) / len(c4_list)
-        avg_c5 = sum(c5_list) / len(c5_list)
+        avg_m3 = sum(c_minus3_list) / len(c_minus3_list)
+        avg_m2 = sum(c_minus2_list) / len(c_minus2_list)
+        avg_m1 = sum(c_minus1_list) / len(c_minus1_list)
+        avg_t = sum(c_t_list) / len(c_t_list)
+        avg_p1 = sum(c_plus1_list) / len(c_plus1_list)
+        avg_p2 = sum(c_plus2_list) / len(c_plus2_list)
+        avg_p3 = sum(c_plus3_list) / len(c_plus3_list)
 
-        # Verim sütunu boş bırakılarak hizalandı
         f.write(
-            f"{'AVERAGE':<8} {'':<12} {'':<7} {avg_c1:+.2f}%   {avg_c2:+.2f}%   {avg_c3:+.2f}%   {avg_c4:+.2f}%   {avg_c5:+.2f}%\n"
+            f"{'AVERAGE':<8} {'':<12} {'':<7} {avg_m3:+.2f}%   {avg_m2:+.2f}%   {avg_m1:+.2f}%   {avg_t:+.2f}%   {avg_p1:+.2f}%   {avg_p2:+.2f}%   {avg_p3:+.2f}%\n"
         )
 
 print(
-    f"Analiz tamamlandı! Ortalamalar hesaplanarak '{OUTPUT_FILE}' dosyasına eklendi."
+    f"Analiz tamamlandı! Sol grup T-4 tabanlı gerçek kümülatif değerlerle '{OUTPUT_FILE}' dosyasına basıldı."
 )

@@ -1,11 +1,9 @@
 import math
 import os
 
+# --- DİNAMİK PARAMETRELER ---
 INPUT_FILE = "processed_data.txt"
 OUTPUT_FILE = "grouped_data.txt"
-
-# --- DİNAMİK PARAMETRELER ---
-# T-1 (kümülatif arefe) veya T gününde bu orandan fazla (veya eşit) oynayan hisseler "Aykırı Değer" kabul edilir.
 OUTLIER_THRESHOLD = 9.5
 
 
@@ -14,94 +12,18 @@ def parse_percentage(val_str):
     return float(val_str.replace("%", "").replace("+", "").strip())
 
 
-if not os.path.exists(INPUT_FILE):
-    print(
-        f"Hata: '{INPUT_FILE}' dosyası bulunamadı! Lütfen önce verileri işleyen scripti çalıştırın."
-    )
-    exit()
-
-# Gruplar ve havuzlar
-grup_notr = []
-grup_pozitif = []
-grup_negatif = []
-tum_hisseler = []
-temizlenmis_hisseler = []  # Parametreye göre filtrelenmiş temiz havuz
-
-with open(INPUT_FILE, "r", encoding="utf-8") as f:
-    lines = f.readlines()
-
-for line in lines:
-    parts = line.strip().split()
-    # Başlık veya ortalama satırlarını atla, dikey çizgi içeren ham parçaları güvenle işle
-    if not parts or parts[0] in ["Hisse", "AVERAGE", "GEOMETRIC"] or "-" in parts[0]:
-        continue
-
-    # Eğer satırda daha önce eklenmiş ayraçlar (|) varsa onları temizle
-    parts = [p for p in parts if p != "|"]
-
-    try:
-        ticker = parts[0]
-        tarih = parts[1]
-        verim = parse_percentage(parts[2])
-
-        # Sadece %2 ve üstü temettü verenler önemli
-        if verim < 2.0:
-            continue
-
-        # 3 parçalı yapıya göre sütun eşleşmeleri
-        c_m3 = parse_percentage(parts[3])  # T-3
-        c_m2 = parse_percentage(parts[4])  # T-2
-        c_m1 = parse_percentage(parts[5])  # T-1 (Sol grubun kümülatif zirvesi)
-        c_t = parse_percentage(parts[6])  # T_Günü (Orta grup bağımsız)
-        c_p1 = parse_percentage(parts[7])  # T+1 (Sağ grup kümülatif)
-        c_p2 = parse_percentage(parts[8])  # T+2 (Sağ grup kümülatif)
-        c_p3 = parse_percentage(parts[9])  # T+3 (Sağ grup kümülatif)
-
-        # --- NET ETKİ HESAPLAMA ---
-        net_etki = verim + c_t
-
-        # --- RELATIVE %10 GRUPLAMA MANTIĞI ---
-        teorik_dusus = -verim
-        tolerans = abs(teorik_dusus) * 0.10
-
-        ust_sinir = teorik_dusus + tolerans
-        alt_sinir = teorik_dusus - tolerans
-
-        hisse_data = {
-            "ticker": ticker,
-            "tarih": tarih,
-            "verim": verim,
-            "net_etki": net_etki,
-            "c_m3": c_m3,
-            "c_m2": c_m2,
-            "c_m1": c_m1,
-            "c_t": c_t,
-            "c_p1": c_p1,
-            "c_p2": c_p2,
-            "c_p3": c_p3,
-        }
-
-        # Ham genel havuza ekle
-        tum_hisseler.append(hisse_data)
-
-        # --- DİNAMİK AYKIRI DEĞER (OUTLIER) FİLTRESİ ---
-        if abs(c_m1) < OUTLIER_THRESHOLD and abs(c_t) < OUTLIER_THRESHOLD:
-            temizlenmis_hisseler.append(hisse_data)
-
-        # Mikro gruplara T_Günü performansına göre dağıt
-        if alt_sinir <= c_t <= ust_sinir:
-            grup_notr.append(hisse_data)
-        elif c_t > ust_sinir:
-            grup_pozitif.append(hisse_data)
-        else:
-            grup_negatif.append(hisse_data)
-
-    except Exception:
-        continue
+def format_geo(prod_val, count, width, has_sign=True):
+    """Kök hesaplayıp stringe sağa hizalı tam genişlik verir, yüzdelik işaretini ekler."""
+    if prod_val <= 0:
+        return f"{'------%':>{width}}"
+    geo_pct = (math.pow(prod_val, 1.0 / count) - 1) * 100
+    sign_str = "+" if geo_pct >= 0 and has_sign else ""
+    res_str = f"{sign_str}{geo_pct:.2f}%"
+    return f"{res_str:>{width}}"
 
 
 def write_grup_to_file(file_handle, grup_adi, grup_listesi):
-    """Belirtilen listeyi 3 parçalı izole gruplara (dikey ayraçlı) ayırarak dosyaya yazar."""
+    """Belirtilen listeyi 3 parçalı izole gruplara (dikey ayraçlı) ayırarak dosyaya yazar ve aggregate verileri hesaplar."""
     file_handle.write(
         f"=== {grup_adi} (Hisse Sayısı: {len(grup_listesi)}) ===\n"
     )
@@ -167,16 +89,6 @@ def write_grup_to_file(file_handle, grup_adi, grup_listesi):
     )
 
     # --- 2. SATIR: GEOMETRİK ORTALAMA (GEOMETRIC) ---
-    def format_geo(prod_val, count, width, has_sign=True):
-        """Kök hesaplayıp stringe sağa hizalı tam genişlik verir, yüzdelik işaretini ekler."""
-        if prod_val <= 0:
-            return f"{'------%':>{width}}"
-        geo_pct = (math.pow(prod_val, 1.0 / count) - 1) * 100
-        sign_str = "+" if geo_pct >= 0 and has_sign else ""
-        res_str = f"{sign_str}{geo_pct:.2f}%"
-        return f"{res_str:>{width}}"
-
-    # Verim sütunu için '%3.69%' yapısı (Yüzde işareti dışarıda değil, iç formatta çözülüyor)
     if prod_verim <= 0:
         geo_verim_str = f"{'------%':>6}"
     else:
@@ -193,51 +105,127 @@ def write_grup_to_file(file_handle, grup_adi, grup_listesi):
     file_handle.write("\n" + "=" * len(header.strip()) + "\n\n")
 
 
-with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-    f.write(
-        "===================================================================================================\n"
-    )
-    f.write(
-        "                 TEMETTÜ İZOLASYONLU İŞ GÜNÜ GRUPLAMA RAPORU (Verim >= %2)                       \n"
-    )
-    f.write(
-        "         (Önceki Günler: T-4 Tabanlı Kümülatif | Sonraki Günler: T-1 Tabanlı Kümülatif)            \n"
-    )
-    f.write(
-        "===================================================================================================\n\n"
-    )
+def generate_dividend_report(input_path, output_path, outlier_threshold=9.5):
+    """
+    Belirtilen girdi dosyasından temettü verilerini okur, dinamik dilimlere göre gruplar,
+    istatistiksel özetleri (aggregate) hesaplar ve hedef dosyaya raporlar.
+    """
+    if not os.path.exists(input_path):
+        print(f"Hata: '{input_path}' dosyası bulunamadı!")
+        return
 
-    # 1. Özel Gruplar
-    write_grup_to_file(
-        f,
-        "1. GRUP: NÖTR (Temettü Günü Beklenen Kadar Düşenler - Relative +-%10)",
-        grup_notr,
-    )
-    write_grup_to_file(
-        f,
-        "2. GRUP: POZİTİF (Temettü Günü Beklenenden Az Düşenler veya Artanlar)",
-        grup_pozitif,
-    )
-    write_grup_to_file(
-        f,
-        "3. GRUP: NEGATİF (Temettü Günü Beklenenden Fazla Düşenler)",
-        grup_negatif,
-    )
+    grup_notr = []
+    grup_pozitif = []
+    grup_negatif = []
+    tum_hisseler = []
+    temizlenmis_hisseler = []
+    
+    max_verim = 2.0  # Dinamik aralık tespiti için maksimum verim takibi
 
-    # 2. Ham Genel Havuz
-    write_grup_to_file(
-        f,
-        "GENEL ÖZET: TÜM TEMETTÜ HİSSELERİ (Ham Veri - Kriter: Verim >= %2)",
-        tum_hisseler,
-    )
+    with open(input_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
 
-    # 3. Filtrelenmiş Genel Havuz
-    write_grup_to_file(
-        f,
-        f"FİLTRELENMİŞ ÖZET: ANOMALİLERDEN ARINDIRILMIŞ (T-1 veya T Gününde %{OUTLIER_THRESHOLD} Üstü Oynayanlar Çıkarıldı)",
-        temizlenmis_hisseler,
-    )
+    for line in lines:
+        parts = line.strip().split()
+        if not parts or parts[0] in ["Hisse", "AVERAGE", "GEOMETRIC"] or "-" in parts[0]:
+            continue
 
-print(
-    f"İşlem tamamlandı! Filtre eşiği %{OUTLIER_THRESHOLD} olarak uygulandı, her iki ortalama türü hesaplandı ve '{OUTPUT_FILE}' dosyasına yazıldı."
-)
+        parts = [p for p in parts if p != "|"]
+
+        try:
+            ticker = parts[0]
+            tarih = parts[1]
+            verim = parse_percentage(parts[2])
+
+            if verim < 2.0:
+                continue
+                
+            if verim > max_verim:
+                max_verim = verim
+
+            c_m3 = parse_percentage(parts[3])
+            c_m2 = parse_percentage(parts[4])
+            c_m1 = parse_percentage(parts[5])
+            c_t = parse_percentage(parts[6])
+            c_p1 = parse_percentage(parts[7])
+            c_p2 = parse_percentage(parts[8])
+            c_p3 = parse_percentage(parts[9])
+
+            net_etki = verim + c_t
+            teorik_dusus = -verim
+            tolerans = abs(teorik_dusus) * 0.10
+
+            ust_sinir = teorik_dusus + tolerans
+            alt_sinir = teorik_dusus - tolerans
+
+            hisse_data = {
+                "ticker": ticker, "tarih": tarih, "verim": verim, "net_etki": net_etki,
+                "c_m3": c_m3, "c_m2": c_m2, "c_m1": c_m1, "c_t": c_t,
+                "c_p1": c_p1, "c_p2": c_p2, "c_p3": c_p3
+            }
+
+            tum_hisseler.append(hisse_data)
+
+            if abs(c_m1) < outlier_threshold and abs(c_t) < outlier_threshold:
+                temizlenmis_hisseler.append(hisse_data)
+
+            if alt_sinir <= c_t <= ust_sinir:
+                grup_notr.append(hisse_data)
+            elif c_t > ust_sinir:
+                grup_pozitif.append(hisse_data)
+            else:
+                grup_negatif.append(hisse_data)
+
+        except Exception:
+            continue
+
+    # --- DİNAMİK VERİM ARALIKLARI OLUŞTURMA ---
+    # Örneğin max_verim 7.4 ise aralıklar: [2, 3), [3, 4), [4, 5), [5, 6), [6, 7), [7, 8) olacak.
+    verim_araliklari = {}
+    baslangic = 2
+    bitis = math.ceil(max_verim)
+    
+    for i in range(baslangic, bitis):
+        verim_araliklari[(i, i+1)] = []
+        
+    for h in tum_hisseler:
+        v = h["verim"]
+        for (alt, ust) in verim_araliklari.keys():
+            if alt <= v < ust:
+                verim_araliklari[(alt, ust)].append(h)
+                break
+            # Eğer tam sınırda veya dışarıda kalan uç bir durum varsa son aralığa dahil et
+            elif ust == bitis and v >= ust:
+                verim_araliklari[(alt, ust)].append(h)
+                break
+
+    # Dosyaya Rapor Yazma Aşaması
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("===================================================================================================\n")
+        f.write("                  TEMETTÜ İZOLASYONLU İŞ GÜNÜ GRUPLAMA RAPORU (Verim >= %2)                       \n")
+        f.write("         (Önceki Günler: T-4 Tabanlı Kümülatif | Sonraki Günler: T-1 Tabanlı Kümülatif)            \n")
+        f.write("===================================================================================================\n\n")
+
+        # 1. Ana Mikro Gruplar
+        write_grup_to_file(f, "1. GRUP: NÖTR (Temettü Günü Beklenen Kadar Düşenler - Relative +-%10)", grup_notr)
+        write_grup_to_file(f, "2. GRUP: POZİTİF (Temettü Günü Beklenenden Az Düşenler veya Artanlar)", grup_pozitif)
+        write_grup_to_file(f, "3. GRUP: NEGATİF (Temettü Günü Beklenenden Fazla Düşenler)", grup_negatif)
+
+        f.write("===================================================================================================\n")
+        f.write("                           DİNAMİK TEMETTÜ VERİM ARALIKLARI RAPORU                                 \n")
+        f.write("===================================================================================================\n\n")
+
+        # 2. Dinamik Aralık Tabloları (İstediğin gibi Negatif gruptan hemen sonra ekleniyor)
+        for (alt, ust), grup_listesi in sorted(verim_araliklari.items()):
+            write_grup_to_file(f, f"TEMETTÜ VERİM ARALIĞI: %{alt} - %{ust} ARASI", grup_listesi)
+
+        # 3. Genel Özet Havuzları
+        write_grup_to_file(f, "GENEL ÖZET: TÜM TEMETTÜ HİSSELERİ (Ham Veri - Kriter: Verim >= %2)", tum_hisseler)
+        write_grup_to_file(f, f"FİLTRELENMİŞ ÖZET: ANOMALİLERDEN ARINDIRILMIŞ (T-1 veya T Gününde %{outlier_threshold} Üstü Oynayanlar Çıkarıldı)", temizlenmis_hisseler)
+
+    print(f"İşlem tamamlandı! Verim aralıkları dinamik olarak eklenip '{output_path}' dosyası başarıyla güncellendi.")
+
+
+# --- FONKSİYONU ÇALIŞTIRMA ---
+if __name__ == "__main__":
+    generate_dividend_report(INPUT_FILE, OUTPUT_FILE, OUTLIER_THRESHOLD)

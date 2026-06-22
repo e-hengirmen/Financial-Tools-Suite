@@ -2,148 +2,131 @@ import datetime
 import os
 import yfinance as yf
 
+# --- PARAMETRELER ---
 INPUT_FILE = "data.txt"
 OUTPUT_FILE = "processed_data.txt"
 
-if not os.path.exists(INPUT_FILE):
-    print(
-        f"Hata: '{INPUT_FILE}' dosyası bulunamadı! Lütfen girdi verilerini bu dosyaya kaydedin."
-    )
-    exit()
+# Gün Sayısı Parametreleri (İstediğin gibi değiştirebilirsin)
+DAYS_BEFORE = 7  # T'den önceki kaç gün incelenecek (örn: T-3, T-2, T-1)
+DAYS_AFTER = 7   # T'den sonraki kaç gün incelenecek (örn: T+1, T+2, T+3)
 
-with open(INPUT_FILE, "r", encoding="utf-8") as f:
-    satirlar = [line.strip().split() for line in f if line.strip()]
 
-sonuclar = []
+def calculate_isolated_daily_returns(input_path, output_path, days_before=3, days_after=3):
+    """
+    BIST verilerini çeker, kümülatif yerine SADECE O GÜNÜN izole günlük getirisini
+    hesaplar ve dosyaya yazar. Gün sayıları parametrik olarak ayarlanabilir.
+    """
+    if not os.path.exists(input_path):
+        print(f"Hata: '{input_path}' dosyası bulunamadı! Lütfen girdi verilerini bu dosyaya kaydedin.")
+        return
 
-c_minus3_list = []
-c_minus2_list = []
-c_minus1_list = []
-c_t_list = []
-c_plus1_list = []
-c_plus2_list = []
-c_plus3_list = []
+    with open(input_path, "r", encoding="utf-8") as f:
+        satirlar = [line.strip().split() for line in f if line.strip()]
 
-print(
-    "BIST verileri çekiliyor ve T-4 tabanlı Sol Grup kümülatif mantığına göre analiz ediliyor...\n"
-)
+    sonuclar = []
+    
+    # Ortalama hesapları için dinamik bir sözlük yapısı (örn: -3, -2, -1, 0, 1, 2, 3)
+    target_offsets = list(range(-days_before, days_after + 1))
+    return_pools = {offset: [] for offset in target_offsets}
 
-for parca in satirlar:
-    if len(parca) < 3:
-        continue
+    print(f"BIST verileri çekiliyor ve T-{days_before} ile T+{days_after} arası İZOLE günlük getiriler hesaplanıyor...\n")
 
-    ticker_raw, tarih_str, verim_str = parca[0], parca[1], parca[2]
-    ticker = f"{ticker_raw}.IS"
-
-    temettu_tarihi = datetime.datetime.strptime(tarih_str, "%Y-%m-%d").date()
-
-    # T-4'ten güvenli veri alabilmek için aralığı sola doğru biraz daha açtık
-    baslangic = (temettu_tarihi - datetime.timedelta(days=15)).strftime(
-        "%Y-%m-%d"
-    )
-    bitis = (temettu_tarihi + datetime.timedelta(days=15)).strftime("%Y-%m-%d")
-
-    try:
-        df = yf.Ticker(ticker).history(
-            start=baslangic, end=bitis, auto_adjust=False
-        )
-
-        if df.empty:
+    for parca in satirlar:
+        if len(parca) < 3:
             continue
 
-        df.index = df.index.date
-        df = df.sort_index()
+        ticker_raw, tarih_str, verim_str = parca[0], parca[1], parca[2]
+        ticker = f"{ticker_raw}.IS"
 
-        all_dates = list(df.index)
+        temettu_tarihi = datetime.datetime.strptime(tarih_str, "%Y-%m-%d").date()
 
-        valid_dates = [d for d in all_dates if d >= temettu_tarihi]
-        if not valid_dates:
-            continue
-        t_gunu = valid_dates[0]
-        t_idx = all_dates.index(t_gunu)
+        # Güvenli veri aralığı (Günlük bazda bir önceki güne ihtiyaç duyduğumuz için sol tarafa +5 gün ek tolerans koyduk)
+        baslangic = (temettu_tarihi - datetime.timedelta(days=days_before + 7)).strftime("%Y-%m-%d")
+        bitis = (temettu_tarihi + datetime.timedelta(days=days_after + 7)).strftime("%Y-%m-%d")
 
-        # T-4 ve T+3 indekslerinin sınır kontrolü (T-4 mevcut olmalı)
-        if t_idx - 4 < 0 or t_idx + 3 >= len(all_dates):
-            continue
+        try:
+            df = yf.Ticker(ticker).history(start=baslangic, end=bitis, auto_adjust=False)
 
-        # Fiyat Noktaları
-        p_t_eksi_4 = df.iloc[t_idx - 4]["Close"]  # Sol grubun ana taban fiyatı
-        p_t_eksi_3 = df.iloc[t_idx - 3]["Close"]
-        p_t_eksi_2 = df.iloc[t_idx - 2]["Close"]
-        p_t_eksi_1 = df.iloc[t_idx - 1]["Close"]
-        p_t = df.iloc[t_idx]["Close"]
-        p_t_arti_1 = df.iloc[t_idx + 1]["Close"]
-        p_t_arti_2 = df.iloc[t_idx + 2]["Close"]
-        p_t_arti_3 = df.iloc[t_idx + 3]["Close"]
+            if df.empty:
+                continue
 
-        # --- YENİ 3 PARÇALI KÜMÜLATİF MANTIK (T-4 TABANLI) ---
+            df.index = df.index.date
+            df = df.sort_index()
 
-        # 1. SOL GRUP (Taban: T-4 kapanış fiyatı | 24 saatlik döngüler kümülatif birikir)
-        c_minus3 = ((p_t_eksi_3 - p_t_eksi_4) / p_t_eksi_4) * 100
-        c_minus2 = ((p_t_eksi_2 - p_t_eksi_4) / p_t_eksi_4) * 100
-        c_minus1 = ((p_t_eksi_1 - p_t_eksi_4) / p_t_eksi_4) * 100
+            all_dates = list(df.index)
+            valid_dates = [d for d in all_dates if d >= temettu_tarihi]
+            if not valid_dates:
+                continue
+                
+            t_gunu = valid_dates[0]
+            t_idx = all_dates.index(t_gunu)
 
-        # 2. ORTA GRUP (Sadece T günü kendisi | Taban: T-1 kapanış fiyatı)
-        c_t = ((p_t - p_t_eksi_1) / p_t_eksi_1) * 100
+            # İndeks sınır kontrolleri: 
+            # En eski gün (t_idx - days_before) ve onun değişimini hesaplamak için bir öncesi (t_idx - days_before - 1) mevcut olmalı.
+            if t_idx - days_before - 1 < 0 or t_idx + days_after >= len(all_dates):
+                continue
 
-        # 3. SAĞ GRUP (T günü dahil kümülatif | Taban: T-1 kapanış fiyatı)
-        c_plus1 = ((p_t_arti_1 - p_t_eksi_1) / p_t_eksi_1) * 100
-        c_plus2 = ((p_t_arti_2 - p_t_eksi_1) / p_t_eksi_1) * 100
-        c_plus3 = ((p_t_arti_3 - p_t_eksi_1) / p_t_eksi_1) * 100
+            # --- İZOLE GÜNLÜK GETİRİ HESAPLAMA ---
+            hisse_returns = {}
+            
+            for offset in target_offsets:
+                current_day_idx = t_idx + offset
+                
+                # Her günün fiyatı, kendisinden bir önceki işlem gününün kapanışına bölünür
+                p_current = df.iloc[current_day_idx]["Close"]
+                p_previous = df.iloc[current_day_idx - 1]["Close"]
+                
+                isolated_return = ((p_current - p_previous) / p_previous) * 100
+                
+                hisse_returns[offset] = isolated_return
+                return_pools[offset].append(isolated_return)
 
-        # Ortalamalar için listelere ekle
-        c_minus3_list.append(c_minus3)
-        c_minus2_list.append(c_minus2)
-        c_minus1_list.append(c_minus1)
-        c_t_list.append(c_t)
-        c_plus1_list.append(c_plus1)
-        c_plus2_list.append(c_plus2)
-        c_plus3_list.append(c_plus3)
-
-        sonuclar.append(
-            {
+            sonuclar.append({
                 "ticker": ticker_raw,
                 "tarih": tarih_str,
                 "verim": verim_str,
-                "c_m3": f"{c_minus3:+.2f}%",
-                "c_m2": f"{c_minus2:+.2f}%",
-                "c_m1": f"{c_minus1:+.2f}%",
-                "c_t": f"{c_t:+.2f}%",
-                "c_p1": f"{c_plus1:+.2f}%",
-                "c_p2": f"{c_plus2:+.2f}%",
-                "c_p3": f"{c_plus3:+.2f}%",
-            }
-        )
+                "returns": hisse_returns
+            })
 
-    except Exception:
-        continue
+        except Exception:
+            continue
 
-# --- PROCESSED_DATA.TXT DOSYASINA YAZMA ---
+    # --- DOSYAYA YAZMA AŞAMASI ---
+    with open(output_path, "w", encoding="utf-8") as f:
+        # Dinamik Başlık Yapısı OLUŞTURMA
+        before_headers = [f"T-{i}" for i in range(days_before, 0, -1)]
+        after_headers = [f"T+{i}" for i in range(1, days_after + 1)]
+        all_headers = before_headers + ["T_Günü"] + after_headers
+        
+        header_str = f"{'Hisse':<8} {'Temettü Tar':<12} {'Verim':<7} " + " ".join([f"{h:<9}" for h in all_headers]) + "\n"
+        f.write(header_str)
+        f.write("-" * len(header_str.strip()) + "\n")
 
-with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-    header = f"{'Hisse':<8} {'Temettü Tar':<12} {'Verim':<7} {'T-3':<9} {'T-2':<9} {'T-1':<9} {'T_Günü':<9} {'T+1':<9} {'T+2':<9} {'T+3':<9}\n"
-    f.write(header)
-    f.write("-" * len(header.strip()) + "\n")
+        # Hisseleri Yazdır
+        for s in sonuclar:
+            line_str = f"{s['ticker']:<8} {s['tarih']:<12} %{s['verim']:<5} "
+            return_strs = []
+            for offset in target_offsets:
+                ret_val = s["returns"][offset]
+                return_strs.append(f"{ret_val:+.2f}%")
+            
+            line_str += " ".join([f"{r:<9}" for r in return_strs]) + "\n"
+            f.write(line_str)
 
-    for s in sonuclar:
-        f.write(
-            f"{s['ticker']:<8} {s['tarih']:<12} %{s['verim']:<5} {s['c_m3']:<9} {s['c_m2']:<9} {s['c_m1']:<9} {s['c_t']:<9} {s['c_p1']:<9} {s['c_p2']:<9} {s['c_p3']:<9}\n"
-        )
+        # Ortalama (AVERAGE) Satırını Yazdır
+        if sonuclar:
+            f.write("-" * len(header_str.strip()) + "\n")
+            avg_strs = []
+            for offset in target_offsets:
+                avg_val = sum(return_pools[offset]) / len(return_pools[offset])
+                avg_strs.append(f"{avg_val:+.2f}%")
+                
+            avg_line = f"{'AVERAGE':<8} {'':<12} {'':<7} " + " ".join([f"{a:<9}" for a in avg_strs]) + "\n"
+            f.write(avg_line)
 
-    if sonuclar:
-        f.write("-" * len(header.strip()) + "\n")
-        avg_m3 = sum(c_minus3_list) / len(c_minus3_list)
-        avg_m2 = sum(c_minus2_list) / len(c_minus2_list)
-        avg_m1 = sum(c_minus1_list) / len(c_minus1_list)
-        avg_t = sum(c_t_list) / len(c_t_list)
-        avg_p1 = sum(c_plus1_list) / len(c_plus1_list)
-        avg_p2 = sum(c_plus2_list) / len(c_plus2_list)
-        avg_p3 = sum(c_plus3_list) / len(c_plus3_list)
+    print(f"Analiz tamamlandı! İzole günlük verilerle '{output_path}' dosyasına basıldı.")
 
-        f.write(
-            f"{'AVERAGE':<8} {'':<12} {'':<7} {avg_m3:+.2f}%   {avg_m2:+.2f}%   {avg_m1:+.2f}%   {avg_t:+.2f}%   {avg_p1:+.2f}%   {avg_p2:+.2f}%   {avg_p3:+.2f}%\n"
-        )
 
-print(
-    f"Analiz tamamlandı! Sol grup T-4 tabanlı gerçek kümülatif değerlerle '{OUTPUT_FILE}' dosyasına basıldı."
-)
+# --- FONKSİYONU ÇALIŞTIRMA ---
+if __name__ == "__main__":
+    calculate_isolated_daily_returns(INPUT_FILE, OUTPUT_FILE, days_before=DAYS_BEFORE, days_after=DAYS_AFTER)

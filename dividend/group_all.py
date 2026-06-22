@@ -1,11 +1,14 @@
 import math
 import os
 
-# --- DİNAMİK PARAMETRELER ---
+# --- DİNAMİK GLOBAL PARAMETLER ---
 INPUT_FOLDERS = ["2023", "2024", "2025"]
 FILENAME = "processed_data.txt"
 OUTPUT_FILE = "grouped_data_all.txt"
-OUTLIER_THRESHOLD = 9.5
+
+# Gün parametreleri
+DAYS_BEFORE = 7
+DAYS_AFTER = 7
 
 
 def parse_percentage(val_str):
@@ -23,191 +26,154 @@ def format_geo(prod_val, count, width, has_sign=True):
     return f"{res_str:>{width}}"
 
 
-def write_grup_to_file(file_handle, grup_adi, grup_listesi):
-    """Belirtilen listeyi 3 parçalı izole gruplara (dikey ayraçlı) ayırarak dosyaya yazar ve aggregate verileri hesaplar."""
-    file_handle.write(
-        f"=== {grup_adi} (Hisse Sayısı: {len(grup_listesi)}) ===\n"
-    )
+def write_grup_to_file(file_handle, grup_adi, grup_listesi, days_before, days_after):
+    """Belirtilen listeyi dinamik gün parametrelerine göre dikey ayraçlı bloklar halinde dosyaya yazar."""
+    file_handle.write(f"=== {grup_adi} (Hisse Sayısı: {len(grup_listesi)}) ===\n")
 
     if not grup_listesi:
         file_handle.write("Bu grupta kriterlere uyan hisse bulunamadı.\n\n")
         return
 
-    # Çoklu yıl için 'Yıl' sütunu eklenmiş dikey çizgili (|) başlık yapısı
-    header = f"{'Hisse':<9} {'Yıl':<5} {'Temettü Tar':<12} {'Verim':<7} | {'T-3':<7} {'T-2':<7} {'T-1':<7} | {'T_Günü':<8} {'Net_Etki':<9} | {'T+1':<7} {'T+2':<7} {'T+3':<7}\n"
+    before_headers = [f"T-{i}" for i in range(days_before, 0, -1)]
+    after_headers = [f"T+{i}" for i in range(1, days_after + 1)]
+    
+    left_part = " ".join([f"{h:<7}" for h in before_headers])
+    mid_part = f"{'T_Günü':<8} {'Net_Etki':<9}"
+    right_part = " ".join([f"{h:<7}" for h in after_headers])
+    
+    header = f"{'Hisse':<9} {'Yıl':<5} {'Temettü Tar':<12} {'Verim':<7} | {left_part} | {mid_part} | {right_part}\n"
     file_handle.write(header)
     file_handle.write("-" * len(header.strip()) + "\n")
 
-    # Aritmetik Toplam Değişkenleri
-    sum_verim, sum_net, sum_m3, sum_m2, sum_m1, sum_t, sum_p1, sum_p2, sum_p3 = (
-        0, 0, 0, 0, 0, 0, 0, 0, 0
-    )
+    offsets_before = list(range(-days_before, 0))
+    offsets_after = list(range(1, days_after + 1))
+    all_offsets = offsets_before + [0] + offsets_after
 
-    # Geometrik Çarpım Değişkenleri (Başlangıç değeri 1 olan faktörler)
-    prod_verim, prod_net, prod_m3, prod_m2, prod_m1, prod_t, prod_p1, prod_p2, prod_p3 = (
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
-    )
+    prod_returns = {offset: 1.0 for offset in all_offsets}
+    prod_verim = 1.0
+    prod_net = 1.0
 
     for h in grup_listesi:
+        left_str = " ".join([f"{h['returns'].get(off, 0.0):+7.2f}%" for off in offsets_before])
+        right_str = " ".join([f"{h['returns'].get(off, 0.0):+7.2f}%" for off in offsets_after])
+        mid_str = f"{h['returns'].get(0, 0.0):+8.2f}% {h['net_etki']:+9.2f}%"
+        
         file_handle.write(
             f"{h['ticker']:<9} {h['yil']:<5} {h['tarih']:<12} %{h['verim']:<5.2f} | "
-            f"{h['c_m3']:+6.2f}% {h['c_m2']:+6.2f}% {h['c_m1']:+6.2f}% | "
-            f"{h['c_t']:+7.2f}% {h['net_etki']:+8.2f}% | "
-            f"{h['c_p1']:+6.2f}% {h['c_p2']:+6.2f}% {h['c_p3']:+6.2f}%\n"
+            f"{left_str} | {mid_str} | {right_str}\n"
         )
         
-        # 1. Aritmetik Toplama Yapılıyor
-        sum_verim += h["verim"]
-        sum_net += h["net_etki"]
-        sum_m3 += h["c_m3"]
-        sum_m2 += h["c_m2"]
-        sum_m1 += h["c_m1"]
-        sum_t += h["c_t"]
-        sum_p1 += h["c_p1"]
-        sum_p2 += h["c_p2"]
-        sum_p3 += h["c_p3"]
-
-        # 2. Geometrik Çarpan Dönüşümü Yapılıyor (1 + R/100)
         prod_verim *= (1 + h["verim"] / 100)
         prod_net *= (1 + h["net_etki"] / 100)
-        prod_m3 *= (1 + h["c_m3"] / 100)
-        prod_m2 *= (1 + h["c_m2"] / 100)
-        prod_m1 *= (1 + h["c_m1"] / 100)
-        prod_t *= (1 + h["c_t"] / 100)
-        prod_p1 *= (1 + h["c_p1"] / 100)
-        prod_p2 *= (1 + h["c_p2"] / 100)
-        prod_p3 *= (1 + h["c_p3"] / 100)
+        
+        for off in all_offsets:
+            val = h["returns"].get(off, 0.0)
+            prod_returns[off] *= (1 + val / 100)
 
     n = len(grup_listesi)
     file_handle.write("-" * len(header.strip()) + "\n")
 
-    # --- 1. SATIR: ARİTMETİK ORTALAMA (AVERAGE) ---
-    file_handle.write(
-        f"{'AVERAGE':<9} {'':<5} {'':<12} %{sum_verim/n:<5.2f} | "
-        f"{sum_m3/n:+6.2f}% {sum_m2/n:+6.2f}% {sum_m1/n:+6.2f}% | "
-        f"{sum_t/n:+7.2f}% {sum_net/n:+8.2f}% | "
-        f"{sum_p1/n:+6.2f}% {sum_p2/n:+6.2f}% {sum_p3/n:+6.2f}%\n"
-    )
-
-    # --- 2. SATIR: GEOMETRİK ORTALAMA (GEOMETRIC) ---
-    if prod_verim <= 0:
-        geo_verim_str = f"{'------%':>6}"
-    else:
-        geo_verim_pct = (math.pow(prod_verim, 1.0 / n) - 1) * 100
-        geo_verim_str = f"{geo_verim_pct:.2f}%"
+    # --- GEOMETRIC SATIRI ---
+    geo_verim_str = f"{(math.pow(prod_verim, 1.0 / n) - 1) * 100:.2f}%" if prod_verim > 0 else f"{'------%':>5}"
+    geo_left = " ".join([format_geo(prod_returns[off], n, 7) for off in offsets_before])
+    geo_right = " ".join([format_geo(prod_returns[off], n, 7) for off in offsets_after])
+    geo_mid = f"{format_geo(prod_returns[0], n, 8)} {format_geo(prod_net, n, 9)}"
 
     file_handle.write(
         f"{'GEOMETRIC':<9} {'':<5} {'':<12} %{geo_verim_str:<5} | "
-        f"{format_geo(prod_m3, n, 6)} {format_geo(prod_m2, n, 6)} {format_geo(prod_m1, n, 6)} | "
-        f"{format_geo(prod_t, n, 7)} {format_geo(prod_net, n, 8)} | "
-        f"{format_geo(prod_p1, n, 6)} {format_geo(prod_p2, n, 6)} {format_geo(prod_p3, n, 6)}\n"
+        f"{geo_left} | {geo_mid} | {geo_right}\n"
     )
 
     file_handle.write("\n" + "=" * len(header.strip()) + "\n\n")
 
 
-def generate_multi_year_dividend_report(folders, filename, output_path, outlier_threshold=9.5):
+def generate_multi_year_dividend_report(
+    folders, filename, output_path, 
+    days_before=7, days_after=7, 
+    group_limits=[2.0, 5.0, 7.0, 15.0]
+):
     """
-    Belirtilen yıl klasörlerindeki processed_data.txt dosyalarını tarar, 
-    verileri tek bir havuzda birleştirerek analiz raporunu hazırlar.
+    Belirlenen aralık limitlerine göre gruplama yapar ve 
+    tablo sonlarında sadece Geometrik Ortalama hesaplar.
     """
-    grup_notr = []
-    grup_pozitif = []
-    grup_negatif = []
+    limits = sorted(group_limits)
+    min_dividend = limits[0]
+    max_dividend = limits[-1]
+
+    # Makro grup sözlüğü dinamik kurulumu
+    makro_gruplar = {(limits[i], limits[i+1]): [] for i in range(len(limits)-1)}
+    
     tum_hisseler = []
-    temizlenmis_hisseler = []
-    
-    # İstediğin yeni özel geniş aralık grupları
-    grup_2_5 = []
-    grup_5_7 = []
-    grup_7_ustu = []
-    
-    max_verim = 2.0
-    bulunan_dosya_sayisi = 0
+    realized_max_verim = min_dividend
 
     for folder in folders:
         input_path = os.path.join(folder, filename)
-        
         if not os.path.exists(input_path):
-            print(f"Uyarı: '{input_path}' dosyası bulunamadı, atlanıyor.")
             continue
-            
-        bulunan_dosya_sayisi += 1
-        print(f"İşleniyor: {input_path}")
 
         with open(input_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         for line in lines:
-            parts = line.strip().split()
-            if not parts or parts[0] in ["Hisse", "AVERAGE", "GEOMETRIC"] or "-" in parts[0]:
+            if not line.strip() or line.startswith("Hisse") or line.startswith("-"):
                 continue
 
-            parts = [p for p in parts if p != "|"]
+            parts = line.strip().split()
+            if len(parts) < 4:
+                continue
 
             try:
                 ticker = parts[0]
                 tarih = parts[1]
                 verim = parse_percentage(parts[2])
 
-                if verim < 2.0:
+                if verim < min_dividend or verim > max_dividend:
                     continue
-                    
-                if verim > max_verim:
-                    max_verim = verim
+                
+                if verim > realized_max_verim:
+                    realized_max_verim = verim
 
-                c_m3 = parse_percentage(parts[3])
-                c_m2 = parse_percentage(parts[4])
-                c_m1 = parse_percentage(parts[5])
-                c_t = parse_percentage(parts[6])
-                c_p1 = parse_percentage(parts[7])
-                c_p2 = parse_percentage(parts[8])
-                c_p3 = parse_percentage(parts[9])
+                # --- SABİT 4. SÜTUN BAZLI MAPLEME ---
+                hisse_returns = {}
+                for i in range(days_before):
+                    offset = -days_before + i
+                    col_idx = 3 + i
+                    if col_idx < len(parts):
+                        hisse_returns[offset] = parse_percentage(parts[col_idx])
 
+                t_gunu_idx = 3 + days_before
+                if t_gunu_idx < len(parts):
+                    hisse_returns[0] = parse_percentage(parts[t_gunu_idx])
+
+                for i in range(1, days_after + 1):
+                    offset = i
+                    col_idx = 3 + days_before + i
+                    if col_idx < len(parts):
+                        hisse_returns[offset] = parse_percentage(parts[col_idx])
+
+                c_t = hisse_returns.get(0, 0.0)
                 net_etki = verim + c_t
-                teorik_dusus = -verim
-                tolerans = abs(teorik_dusus) * 0.10
-
-                ust_sinir = teorik_dusus + tolerans
-                alt_sinir = teorik_dusus - tolerans
 
                 hisse_data = {
-                    "ticker": ticker, "yil": folder, "tarih": tarih, "verim": verim, "net_etki": net_etki,
-                    "c_m3": c_m3, "c_m2": c_m2, "c_m1": c_m1, "c_t": c_t,
-                    "c_p1": c_p1, "c_p2": c_p2, "c_p3": c_p3
+                    "ticker": ticker, "yil": folder, "tarih": tarih, "verim": verim, 
+                    "net_etki": net_etki, "returns": hisse_returns
                 }
 
                 tum_hisseler.append(hisse_data)
 
-                # --- 3 YENİ ÖZEL ARALIK GRUPLAMASI ---
-                if 2.0 <= verim < 5.0:
-                    grup_2_5.append(hisse_data)
-                elif 5.0 <= verim < 7.0:
-                    grup_5_7.append(hisse_data)
-                elif verim >= 7.0:
-                    grup_7_ustu.append(hisse_data)
-
-                if abs(c_m1) < outlier_threshold and abs(c_t) < outlier_threshold:
-                    temizlenmis_hisseler.append(hisse_data)
-
-                if alt_sinir <= c_t <= ust_sinir:
-                    grup_notr.append(hisse_data)
-                elif c_t > ust_sinir:
-                    grup_pozitif.append(hisse_data)
-                else:
-                    grup_negatif.append(hisse_data)
+                # --- FONKSİYONEL ARALIK DAĞILIMI ---
+                for (alt, ust) in makro_gruplar.keys():
+                    if alt <= verim < ust or (ust == max_dividend and verim == ust):
+                        makro_gruplar[(alt, ust)].append(hisse_data)
+                        break
 
             except Exception:
                 continue
 
-    if bulunan_dosya_sayisi == 0:
-        print("Hata: Belirtilen klasörlerin hiçbirinde veri dosyası bulunamadı!")
-        return
-
-    # --- DİNAMİK 1'ERLİK VERİM ARALIKLARI OLUŞTURMA ---
+    # Dinamik Adımsal 1'erlik Aralık Yapısı
     verim_araliklari = {}
-    baslangic = 2
-    bitis = math.ceil(max_verim)
+    baslangic = math.floor(min_dividend)
+    bitis = math.ceil(realized_max_verim)
     
     for i in range(baslangic, bitis):
         verim_araliklari[(i, i+1)] = []
@@ -215,48 +181,49 @@ def generate_multi_year_dividend_report(folders, filename, output_path, outlier_
     for h in tum_hisseler:
         v = h["verim"]
         for (alt, ust) in verim_araliklari.keys():
-            if alt <= v < ust:
-                verim_araliklari[(alt, ust)].append(h)
-                break
-            elif ust == bitis and v >= ust:
+            if alt <= v < ust or (ust == bitis and v >= ust):
                 verim_araliklari[(alt, ust)].append(h)
                 break
 
-    # Dosyaya Rapor Yazma Aşaması
+    # Rapor Yazımı
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write("=======================================================================================================\n")
-        f.write("                  TEMETTÜ İZOLASYONLU ÇOKLU YIL GRUPLAMA RAPORU (Verim >= %2)                       \n")
-        f.write("         (Önceki Günler: T-4 Tabanlı Kümülatif | Sonraki Günler: T-1 Tabanlı Kümülatif)                \n")
-        f.write("=======================================================================================================\n\n")
+        line_len = 50 + (days_before + days_after + 1) * 8
+        divider = "=" * line_len + "\n"
+        
+        f.write(divider)
+        f.write(f"                  TEMETTÜ VERİM BAZLI ÇOKLU YIL GRUPLAMA RAPORU\n")
+        f.write(f"                       Aktif Sınırlar -> En Düşük: %{min_dividend:.2f} | En Yüksek: %{max_dividend:.2f}\n")
+        f.write(divider + "\n")
 
-        # 1. Ana Mikro Gruplar
-        write_grup_to_file(f, "1. GRUP: NÖTR (Temettü Günü Beklenen Kadar Düşenler - Relative +-%10)", grup_notr)
-        write_grup_to_file(f, "2. GRUP: POZİTİF (Temettü Günü Beklenenden Az Düşenler veya Artanlar)", grup_pozitif)
-        write_grup_to_file(f, "3. GRUP: NEGATİF (Temettü Günü Beklenenden Fazla Düşenler)", grup_negatif)
+        # Genel Özet
+        write_grup_to_file(f, "GENEL ÖZET: LİMİTLERE UYAN TÜM HİSSELER", tum_hisseler, days_before, days_after)
 
-        # 2. Yeni İstediğin Geniş Makro Gruplar (2-5, 5-7, 7+)
-        f.write("=======================================================================================================\n")
-        f.write("                           ÖZEL MAKRO TEMETTÜ VERİM ARALIKLARI                                         \n")
-        f.write("=======================================================================================================\n\n")
-        write_grup_to_file(f, "MAKRO ARALIK: %2.00 - %5.00 ARASI", grup_2_5)
-        write_grup_to_file(f, "MAKRO ARALIK: %5.00 - %7.00 ARASI", grup_5_7)
-        write_grup_to_file(f, "MAKRO ARALIK: %7.00 VE ÜZERİ", grup_7_ustu)
+        # Makro Aralıklar
+        f.write(divider)
+        f.write("                           FONKSİYONEL MAKRO TEMETTÜ VERİM ARALIKLARI\n")
+        f.write(divider + "\n")
+        for (alt, ust), g_list in sorted(makro_gruplar.items()):
+            write_grup_to_file(f, f"MAKRO ARALIK: %{alt:.2f} - %{ust:.2f} ARASI", g_list, days_before, days_after)
 
-        f.write("=======================================================================================================\n")
-        f.write("                           DİNAMİK ADIMSAL TEMETTÜ VERİM ARALIKLARI RAPORU                             \n")
-        f.write("=======================================================================================================\n\n")
+        # Adımsal Aralıklar
+        f.write(divider)
+        f.write("                           DİNAMİK ADIMSAL TEMETTÜ VERİM ARALIKLARI RAPORU\n")
+        f.write(divider + "\n")
+        for (alt, ust), g_list in sorted(verim_araliklari.items()):
+            if g_list:
+                write_grup_to_file(f, f"TEMETTÜ VERİM ARALIĞI: %{alt} - %{ust} ARASI", g_list, days_before, days_after)
 
-        # 3. Dinamik 1'erlik Aralık Tabloları
-        for (alt, ust), grup_listesi in sorted(verim_araliklari.items()):
-            write_grup_to_file(f, f"TEMETTÜ VERİM ARALIĞI: %{alt} - %{ust} ARASI", grup_listesi)
-
-        # 4. Genel Özet Havuzları
-        write_grup_to_file(f, "GENEL ÖZET: TÜM TEMETTÜ HİSSELERİ (Ham Veri - Kriter: Verim >= %2)", tum_hisseler)
-        write_grup_to_file(f, f"FİLTRELENMİŞ ÖZET: ANOMALİLERDEN ARINDIRILMIŞ (T-1 veya T Gününde %{outlier_threshold} Üstü Oynayanlar Çıkarıldı)", temizlenmis_hisseler)
-
-    print(f"\nİşlem tamamlandı! Geniş makro aralıklar eklenerek '{output_path}' dosyası başarıyla üretildi.")
+    print(f"Rapor başarıyla '{output_path}' olarak üretildi. Yalnızca geometrik ortalamalar korundu.")
 
 
-# --- FONKSİYONU ÇALIŞTIRMA ---
 if __name__ == "__main__":
-    generate_multi_year_dividend_report(INPUT_FOLDERS, FILENAME, OUTPUT_FILE, OUTLIER_THRESHOLD)
+    MY_LIMITS = [2.0, 5.0, 7.0, math.inf]
+
+    generate_multi_year_dividend_report(
+        INPUT_FOLDERS, 
+        FILENAME, 
+        OUTPUT_FILE, 
+        days_before=DAYS_BEFORE, 
+        days_after=DAYS_AFTER,
+        group_limits=MY_LIMITS
+    )

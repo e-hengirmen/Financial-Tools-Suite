@@ -3,6 +3,8 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from dateutil.relativedelta import relativedelta
 from copy import deepcopy
+import yfinance as yf
+import time
 
 import numpy as np
 import pandas as pd
@@ -13,8 +15,46 @@ class StockScraper:
         self.start_date = '2010-01-01'
         self.start_date_datetime = datetime.strptime(self.start_date, '%Y-%m-%d').date()
         self.data_center = {}
-    
+
     def get_data(self, abbr):
+        import time
+        # Fintables artık Unix Timestamp istiyor. 
+        # Başlangıç tarihini saniyeye çeviriyoruz.
+        from_timestamp = int(time.mktime(self.start_date_datetime.timetuple()))
+        # Bitiş tarihini 'bugün' olarak dinamik alıp saniyeye çeviriyoruz.
+        to_timestamp = int(time.time())
+        
+        # Yeni endpoint URL yapısı
+        url = f'https://markets.fintables.com/barbar/udf/history?symbol={abbr}&resolution=D&from={from_timestamp}&to={to_timestamp}'
+        
+        response = self.scraper.get(url)
+        if response.status_code == 200:
+            json_res = response.json()
+            
+            # API'den veri gelmediyse veya boşsa koruma
+            if json_res.get('s') != 'ok':
+                raise Exception(f"{abbr} için veri alınamadı veya sembol bulunamadı.")
+                
+            # TradingView UDF formatını eski kodunuzun okuyabileceği formata (liste içine dict) dönüştürüyoruz
+            timestamps = json_res['t'] # Zaman listesi (Unix)
+            close_prices = json_res['c'] # Kapanış fiyatları listesi
+            
+            transformed_data = []
+            for t_val, c_val in zip(timestamps, close_prices):
+                # Unix saniyesini tekrar datetime.date objesine çeviriyoruz
+                row_date = datetime.fromtimestamp(t_val).date()
+                
+                # Eski kodunuzun beklediği mimariyi taklit ediyoruz: {'value': X, 'date': Y}
+                transformed_data.append({
+                    'value': float(c_val),
+                    'date': row_date
+                })
+                
+            return transformed_data
+        else:
+            raise Exception(f'Gotten {response.status_code} from fintables api')
+    
+    def get_data_old(self, abbr):
         # url = f'https://api.fintables.com/funds/{abbr}/chart/?start_date={self.start_date}&compare='
         url = f'https://api.fintables.com/funds/{abbr}/chart/?start_date={self.start_date}'
         response = self.scraper.get(url)
@@ -214,11 +254,187 @@ class StockScraper:
                 color = "\033[0m"   # default
             print(f"{color}{a} - {b}: {corr:.4f}\033[0m")
         print('########################################')
+    
+    def calculate_cumulative_growth_with_search(self, fund_abbr, compare_symbol='TRY=X', start_date=None, end_date=None, method='pearson'):
+        """
+        Fintables ve Yahoo Finance'ten ham verileri çeker.
+        Doların dünkü kapanışını (Close.shift(1)) fonun bugünkü fiyatıyla eşitleyerek valör sapmasını düzeltir.
+        Ardından temizlenen bu senkronize veri üzerinden Day 0 kümülatif büyümesini hesaplar.
+        Greedy ve Ternary/Binary Search kombinasyonu ile kümülatif çizgileri en iyi eşleyen çarpanı bulur.
+        """
+        import yfinance as yf
+        import time
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import pandas as pd
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+        
+        # --- YAHOO FINANCE OTOMATİK FORMAT DÜZELTME ---
+        if compare_symbol.upper() in ['USDTRY', 'USD', 'DOLAR']:
+            compare_symbol = 'TRY=X'
+        elif compare_symbol.upper() in ['EURTRY', 'EUR', 'EURO']:
+            compare_symbol = 'EURTRY=X'
+            
+        if start_date is None:
+            start_date = (datetime.today() - relativedelta(months=12)).date()
+        if end_date is None:
+            end_date = datetime.now().date()
+            
+        if type(start_date) is str:
+            start_date = self.get_date(start_date)
+        if type(end_date) is str:
+            end_date = self.get_date(end_date)
 
+        # --- 1. ADIM: Fintables'tan Fon Verisini Çekme ---
+        from_timestamp = int(time.mktime(start_date.timetuple()))
+        to_timestamp = int(time.time())
+        
+        url = f'https://markets.fintables.com/barbar/udf/history?symbol={fund_abbr}&resolution=D&from={from_timestamp}&to={to_timestamp}'
+        response = self.scraper.get(url)
+        
+        if response.status_code != 200:
+            raise Exception(f'Fintables API\'sinden {response.status_code} hatası alındı.')
+            
+        json_res = response.json()
+        if json_res.get('s') != 'ok':
+            print(f"{fund_abbr} için veri bulunamadı.")
+            return
+
+        fund_rows = []
+        for t_val, c_val in zip(json_res['t'], json_res['c']):
+            fund_rows.append({
+                'date': datetime.fromtimestamp(t_val).date(),
+                'fund_value': float(c_val)
+            })
+        df_fund = pd.DataFrame(fund_rows)
+
+        # --- 2. ADIM: Yahoo Finance'ten Karşılaştırma Sembolünü Çekme ---
+        yf_start = start_date.strftime('%Y-%m-%d')
+        yf_end = (end_date + relativedelta(days=1)).strftime('%Y-%m-%d')
+        
+        try:
+            ticker_data = yf.download(compare_symbol, start=yf_start, end=yf_end, progress=False, auto_adjust=False)
+            if ticker_data.empty:
+                raise Exception()
+            
+            df_compare = ticker_data[['Close']].copy()
+            df_compare.columns = ['compare_value']
+            df_compare = df_compare.reset_index()
+            df_compare['date'] = df_compare['Date'].dt.date
+            df_compare = df_compare[['date', 'compare_value']]
+        except:
+            print(f"Yahoo Finance üzerinden {compare_symbol} sembolü indirilemedi.")
+            return
+
+        # --- 3. ADIM: İki Veriyi Ortak İşlem Günlerine Göre Eşitleme ---
+        merged_df = pd.merge(df_fund, df_compare, on='date', how='inner').sort_values('date').reset_index(drop=True)
+
+        if merged_df.empty:
+            print(f"{start_date} ve {end_date} arasında ortak işlem günü bulunamadı.")
+            return
+
+        # --- 4. ADIM: ZAMAN KAYMASINI HAM FİYAT SEVİYESİNDE DÜZELTME ---
+        # Doların dünkü kapanışını fonun bugünkü fiyatının karşısına getiriyoruz (Valör düzeltmesi)
+        merged_df['compare_value_lagged'] = merged_df['compare_value'].shift(1)
+        
+        # Shift işleminden dolayı oluşan ilk satırdaki NaN değerini temizliyoruz.
+        # Böylece yeni tablomuzun İLK SATIRI her iki enstrümanın da GERÇEK EŞLEŞEN başlangıç noktası (Day 0) oluyor.
+        clean_df = merged_df.dropna(subset=['compare_value_lagged']).copy().reset_index(drop=True)
+
+        # --- 5. ADIM: YENİ SENKRONİZE BAŞLANGIÇ NOKTALARI (Day 0) ---
+        initial_fund_price = clean_df['fund_value'].iloc[0]
+        initial_compare_price = clean_df['compare_value_lagged'].iloc[0] # Senkronize başlangıç fiyatı
+
+        # Kümülatif büyüme serileri (Artık başlangıç anları milimetrik olarak aynı)
+        clean_df['fund_growth'] = (clean_df['fund_value'] / initial_fund_price) - 1
+        clean_df['compare_growth_raw'] = (clean_df['compare_value'] / clean_df['compare_value'].iloc[0]) - 1 # Karşılaştırma için ham (eşlenmemiş) trend
+        clean_df['compare_growth_lagged_base'] = (clean_df['compare_value_lagged'] / initial_compare_price) - 1
+
+        # --- 6. ADIM: GREEDY & BINARY/TERNARY SEARCH İLE OPTİMAL MULTIPLIER BULMA ---
+        def calculate_sse(m):
+            return np.sum((clean_df['fund_growth'] - (clean_df['compare_growth_lagged_base'] * m)) ** 2)
+
+        # Greedy kaba arama (1, 2, 4 ... 256)
+        greedy_values = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+        best_greedy_idx = 0
+        min_greedy_error = float('inf')
+        
+        for i, val in enumerate(greedy_values):
+            err = calculate_sse(val)
+            if err < min_greedy_error:
+                min_greedy_error = err
+                best_greedy_idx = i
+
+        # Sınırları (Bound) Tanımlama
+        if best_greedy_idx == 0:
+            low_b, high_b = 0.0, 2.0
+        elif best_greedy_idx == len(greedy_values) - 1:
+            low_b, high_b = greedy_values[-2], greedy_values[-1] * 2
+        else:
+            low_b = greedy_values[best_greedy_idx - 1]
+            high_b = greedy_values[best_greedy_idx + 1]
+
+        # Hassas Arama Optimizasyonu
+        for _ in range(60):
+            mid1 = low_b + (high_b - low_b) / 3
+            mid2 = high_b - (high_b - low_b) / 3
+            if calculate_sse(mid1) < calculate_sse(mid2):
+                high_b = mid2
+            else:
+                low_b = mid1
+            
+        estimated_multiplier = round((low_b + high_b) / 2, 4)
+
+        # En ideal çarpanla ölçeklenmiş nihai seriyi oluşturuyoruz
+        clean_df['compare_growth_scaled'] = clean_df['compare_growth_lagged_base'] * estimated_multiplier
+
+        # --- 7. ADIM: GERÇEK VE NET KORELASYON FARKI ---
+        # Aynı gün (hatalı/ham) kümülatif korelasyonu
+        corr_raw = clean_df['fund_growth'].corr(clean_df['compare_growth_raw'], method=method)
+        # 1 gün gecikmeli (senkronize edilmiş) kümülatif korelasyon
+        corr_lagged = clean_df['fund_growth'].corr(clean_df['compare_growth_scaled'], method=method)
+
+        # --- 8. ADIM: SONUÇLARI EKRANA YAZDIRMA ---
+        if corr_lagged >= 0.70:
+            color = "\033[92m"  # Yeşil
+        elif corr_lagged <= -0.40:
+            color = "\033[91m"  # Kırmızı
+        else:
+            color = "\033[0m"
+            
+        print('\n########################################')
+        print(f"SENKRONİZE KÜMÜLATİF TREND ANALİZİ ({method.capitalize()}):")
+        print(f"Aynı Gün Kümülatif Korelasyonu (Hatalı/Kaymış): {corr_raw:.4f}")
+        print(f"{color}1 Gün Gecikmeli Kümülatif Korelasyon (DÜZELTİLMİŞ): {corr_lagged:.4f}\033[0m")
+        print(f"\n* By greedy approaches we estimate the multiplier value to be {estimated_multiplier} and the correlation to be {corr_lagged:.4f} *")
+        print("The data below is shown with given multiplier value.")
+        print('########################################\n')
+
+        # --- 9. ADIM: GÖRSEL GRAFİK ÇİZİMİ ---
+        plt.figure(figsize=(14, 7))
+        
+        plt.plot(clean_df['date'], clean_df['fund_growth'] * 100, 
+                 label=f'{fund_abbr} Birikimli Değişim (Day 0\'dan Beri)', linestyle='-', color='#1f77b4', linewidth=2)
+        
+        plt.plot(clean_df['date'], clean_df['compare_growth_scaled'] * 100, 
+                 label=f'{compare_symbol} Birikimli Değişim (x{estimated_multiplier} Valör Senkronizeli)', 
+                 linestyle='--', color='#ff7f0e', linewidth=2)
+        
+        plt.xlabel('Tarih')
+        plt.ylabel('Day 0\'dan İtibaren Toplam Değişim (%)')
+        plt.title(f'{fund_abbr} vs {compare_symbol} Senkronize Kümülatif Büyüme Grafiği\nOptimized Multiplier: {estimated_multiplier}x | Corrected Correlation: {corr_lagged:.4f}')
+        plt.legend(loc='upper left')
+        plt.grid(True, linestyle=':', alpha=0.6)
+        plt.tight_layout()
+        plt.show()
+        
+        return corr_lagged
 
 
 
 stockscraper = StockScraper()
+
 general_fund_list = [
     'AES',
     'IHK',
@@ -296,16 +512,16 @@ stockscraper.create_tables(fund_list)
 
 
 
-
 today_datetime = datetime.today()
 today  = datetime.today().strftime('%Y-%m-%d')
 month_0 = today_datetime.replace(day=1).strftime('%Y-%m-%d')
 month_1 = (today_datetime - relativedelta(months=1)).replace(day=1).strftime('%Y-%m-%d')
 month_2 = (today_datetime - relativedelta(months=2)).replace(day=1).strftime('%Y-%m-%d')
+month_3 = (today_datetime - relativedelta(months=3)).replace(day=1).strftime('%Y-%m-%d')
 month_4 = (today_datetime - relativedelta(months=4)).replace(day=1).strftime('%Y-%m-%d')
 month_6 = (today_datetime - relativedelta(months=6)).replace(day=1).strftime('%Y-%m-%d')
 month_12 = (today_datetime - relativedelta(months=12)).replace(day=1).strftime('%Y-%m-%d')
-
+"""
 stockscraper.plot_within_dates(fund_list, month_12, today, drop_late_starts=True)
 stockscraper.plot_within_dates(fund_list, month_6, today, drop_late_starts=True)
 stockscraper.plot_within_dates(fund_list, month_4, today, drop_late_starts=True)
@@ -315,6 +531,7 @@ stockscraper.plot_within_dates(fund_list, month_0, today, drop_late_starts=True)
 # x = stockscraper.get_data_within('DVT', '2024-01-01', '2024-06-01')
 
 stockscraper.get_all_correlations()
+"""
 
 
 
@@ -323,3 +540,18 @@ stockscraper.get_all_correlations()
 # stockscraper.plot_monthly('YZG', '2024-01-01', '2024-8-18')
 
 # stockscraper.plot_monthly('YZG', '2023-01-01', '2024-8-18')
+
+
+# Listeye BSM fonunu eklediğinizden emin olun veya doğrudan tekil çağırın:
+
+"""
+stockscraper.create_tables(['BSM'])
+
+# Doğrudan yeni ismiyle çağırma
+stockscraper.calculate_cumulative_growth_with_search('BSM', 'USDTRY', start_date=month_12, end_date=month_6)
+# stockscraper.calculate_cumulative_growth_with_search('BSM', 'USDTRY', start_date=month_6, end_date=month_4)
+# stockscraper.calculate_cumulative_growth_with_search('BSM', 'USDTRY', start_date=month_4, end_date=month_2)
+stockscraper.calculate_cumulative_growth_with_search('BSM', 'USDTRY', start_date=month_3, end_date=today)
+
+stockscraper.calculate_cumulative_growth_with_search('BSM', 'USDTRY', start_date=month_6, end_date=today)
+"""
